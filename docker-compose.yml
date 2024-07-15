@@ -1,0 +1,38 @@
+version: "3.3"
+
+services:
+  # postgres database
+  chefbooklet_postgresql:
+    image: postgres:16
+    container_name: chefbooklet_postgresql
+    restart: always
+    ports:
+      - 5432:5432
+    env_file:
+      - .env
+    volumes:
+      - ./dump:/dump
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Django app
+  chefbooklet_app:
+    image: chefbooklet_app
+    container_name: chefbooklet_backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    restart: always
+    ports:
+      - 8000:8000
+    depends_on:
+      - chefbooklet_postgresql
+    volumes:
+      - .:/chefbooklet
+volumes:
+  dump:
