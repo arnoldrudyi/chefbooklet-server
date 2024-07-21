@@ -58,19 +58,31 @@ class FavouriteDishesData(APIView):
 
     def get(self, request):
         AWS_STORAGE_BUCKET_NAME = os.environ['AWS_STORAGE_BUCKET_NAME']
-        USE_S3 = os.environ['USE_S3'] == "true"
+        USE_S3 = os.environ.get('USE_S3', 'false').lower() == "true"
 
+        try:
+            offset = request.GET.get('offset', 0)
+            offset = int(offset)
+        except ValueError:
+            offset = 0
+         
         customer = Customer.objects.prefetch_related('favourite_dishes').filter(user=request.user).first()
+        favourite_dishes = customer.favourite_dishes.all()
+        base_url = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/media/' if USE_S3 else f'{request.build_absolute_uri("/")[:-1]}/media/'
 
-        return Response([{
-            'id': dish.id,
-            'name': dish.name,
-            'slug': dish.slug,
-            'nationality': dish.nationality,
-            'level': dish.level,
-            'image_url': f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/media/{dish.image}' 
-                if USE_S3 else f'{request.build_absolute_uri("/")[:-1]}/media/{dish.image}',
-        } for dish in customer.favourite_dishes.all()], status=status.HTTP_200_OK)
+        result = [
+            {
+                'id': dish.id,
+                'name': dish.name,
+                'slug': dish.slug,
+                'nationality': dish.nationality,
+                'level': dish.level,
+                'image_url': f'{base_url}{dish.image}',
+            }
+            for dish in favourite_dishes[offset:offset+10]
+        ]
+
+        return Response({"result": result, "total": len(favourite_dishes)}, status=status.HTTP_200_OK)
 
     def post(self, request):
         dish_id = request.data.get('dish_id')

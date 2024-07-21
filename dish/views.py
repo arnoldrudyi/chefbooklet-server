@@ -13,7 +13,7 @@ from account.permissions import IsAuthenticated, IsAdmin
 
 def generate_response(dish_id, request, restricted=True):
     AWS_STORAGE_BUCKET_NAME = os.environ['AWS_STORAGE_BUCKET_NAME']
-    USE_S3 = os.environ['USE_S3'] == "true"
+    USE_S3 = os.environ.get('USE_S3', 'false').lower() == "true"
 
     try:
         dish = Dish.objects.prefetch_related('ingredients').filter(id=dish_id).all()[0]
@@ -26,20 +26,21 @@ def generate_response(dish_id, request, restricted=True):
                     "unit": dishingredient.unit} for ingredient in dish.ingredients.all()
                    for dishingredient in DishIngredient.objects.filter(ingredient_id=ingredient.id, dish_id=dish.id)]
 
+    base_url = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/media/' if USE_S3 else f'{request.build_absolute_uri("/")[:-1]}/media/'
+
     response = {
         'id': dish.id,
         'name': dish.name,
         'slug': dish.slug,
         'nationality': dish.nationality,
         'level': dish.level,
-        'image_url': f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/media/{dish.image}' 
-            if USE_S3 else f'{request.build_absolute_uri("/")[:-1]}/media/{dish.image}',
+        'image_url': f'{base_url}{dish.image}',
     }
 
     return response if restricted else {**response, 'ingredients': ingredients, 'sequence': dish.sequence}
 
 
-class CreationDishAPIView(APIView):
+class CreateDishAPIView(APIView):
     """Create a new dish object"""
     serializer_class = DishSerializer
     permission_classes = (IsAuthenticated, IsAdmin)
@@ -91,11 +92,20 @@ class GetDishesByNationality(APIView):
     """Get a list of dishes by nationality (category)"""
 
     def get(self, request, nationality_code):
-        dishes = Dish.objects.filter(nationality=nationality_code)
+        try:
+            offset = request.GET.get('offset', 0)
+            offset = int(offset)
+        except ValueError:
+            offset = 0
+
+        dishes = Dish.objects.filter(nationality=nationality_code)[offset:offset+10]
         result = [generate_response(dish.id, request, True) for dish in dishes]
 
         if result:
-            return Response(status=status.HTTP_200_OK, data=result)
+            return Response({
+                "result": result,
+                "total": len(result)
+            }, status=status.HTTP_200_OK)
         else:
             return Response({
                'error': 'No dishes with such nationality were found'
@@ -106,6 +116,12 @@ class FindDishesByIngredientsAPIView(APIView):
     """Find a list of dishes by ingredient list"""
 
     def get(self, request):
+        try:
+            offset = request.GET.get('offset', 0)
+            offset = int(offset)
+        except ValueError:
+            offset = 0
+
         query = [ingredient.replace('+', ' ') for ingredient in request.GET.getlist('q')]
         all_dishes_ingredients = Dish.objects.prefetch_related('ingredients')
         dishes = []
@@ -115,10 +131,13 @@ class FindDishesByIngredientsAPIView(APIView):
             dishes.append({"id": dish.id, "ingredients": ingredients})
 
         ids = [dish['id'] for dish in dishes if all(element in list(query) for element in dish['ingredients'])]
-        result = [generate_response(dish_id, request, True) for dish_id in ids]
+        result = [generate_response(dish_id, request, True) for dish_id in ids[offset:offset+10]]
 
         if result:
-            return Response(status=status.HTTP_200_OK, data=result)
+            return Response({
+                "result": result,
+                "total": len(result)
+            }, status=status.HTTP_200_OK)
         else:
             return Response({
                 'error': 'No dishes recipes with the specified ingredients were found'

@@ -17,8 +17,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Base url to serve media files
-USE_S3 = os.environ['USE_S3'] == 'true'
-
+USE_S3 = os.environ.get('USE_S3', 'false').lower() == "true"
 
 if USE_S3:
     AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
@@ -46,13 +45,17 @@ DEBUG = os.environ['USE_S3'] == 'false'
 
 CORS_ORIGIN_ALLOW_ALL = True
 
-ALLOWED_HOSTS = ['.vercel.app', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['.vercel.app', 'localhost', '127.0.0.1', '.fly.dev']
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ]
+    ],
 }
+
+if not DEBUG:
+    REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = ['rest_framework.renderers.JSONRenderer', ]
+    REST_FRAMEWORK['DEFAULT_PARSER_CLASSES'] = ['rest_framework.parsers.JSONParser', ]
 
 # Application definition
 

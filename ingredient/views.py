@@ -27,7 +27,10 @@ class IngredientAPIView(APIView):
 
     def get(self, request):
         query = request.GET.getlist('q')
-        ingredients_list = Ingredient.objects.filter(name__istartswith=query[0])[:8]
+        if len(query[0]) == 1:
+            ingredients_list = Ingredient.objects.filter(name__istartswith=query[0].lower())[:8]
+        else:
+            ingredients_list = Ingredient.objects.filter(name__contains=query[0].lower())[:8]
         result = [ingredient.name for ingredient in ingredients_list]
 
         return Response({
